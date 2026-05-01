@@ -4,8 +4,8 @@ REM Requires: Python on PATH (py launcher), .env in this folder with API setting
 REM
 REM Task Scheduler example:
 REM   Action: Start a program
-REM   Program/script:  C:\Users\bobby\Dropbox\Dispatcharr API\run_dispatcharr_daily.bat
-REM   Start in:         C:\Users\bobby\Dropbox\Dispatcharr API
+REM   Program/script:  full path to this run_dispatcharr_daily.bat
+REM   Start in:         folder that contains this repo (same folder as .env)
 REM   (Or use cmd.exe /c with quoted path to this .bat if "Start in" is empty.)
 
 setlocal EnableDelayedExpansion

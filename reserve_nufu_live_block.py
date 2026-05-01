@@ -28,12 +28,7 @@ import re
 import sys
 from typing import Any, Optional
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None  # type: ignore[assignment]
-
-from dispatcharr_client import DispatcharrClient, config_from_env
+from dispatcharr_client import DispatcharrClient, config_from_env, load_dispatcharr_dotenv
 
 LOG = logging.getLogger("reserve_nufu")
 
@@ -182,8 +177,7 @@ def run_repair_mains(client: DispatcharrClient, *, apply: bool, prefix: str) -> 
 
 def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    if load_dotenv:
-        load_dotenv()
+    load_dispatcharr_dotenv()
 
     ap = argparse.ArgumentParser(description="Reserve ch 1–50 for Nufu live; move library to 51+")
     ap.add_argument(

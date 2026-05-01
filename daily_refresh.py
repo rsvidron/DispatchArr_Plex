@@ -24,16 +24,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None  # type: ignore[assignment]
-
-try:
     import yaml
 except ImportError:
     yaml = None  # type: ignore[assignment]
 
-from dispatcharr_client import DispatcharrClient, config_from_env
+from dispatcharr_client import DispatcharrClient, config_from_env, load_dispatcharr_dotenv
 
 
 LOG = logging.getLogger("daily_refresh")
@@ -160,8 +155,7 @@ def main(argv: list[str]) -> int:
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
-    if load_dotenv:
-        load_dotenv()
+    load_dispatcharr_dotenv()
 
     p = argparse.ArgumentParser(description="Dispatcharr daily M3U refresh + optional remap")
     p.add_argument(

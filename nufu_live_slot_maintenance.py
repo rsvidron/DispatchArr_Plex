@@ -28,12 +28,7 @@ import re
 import sys
 from typing import Any, Optional
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None  # type: ignore[assignment]
-
-from dispatcharr_client import DispatcharrClient, config_from_env
+from dispatcharr_client import DispatcharrClient, config_from_env, load_dispatcharr_dotenv
 
 LOG = logging.getLogger("nufu_live_slots")
 
@@ -196,8 +191,7 @@ def prune_unused_nufu_live_slots(
 
 def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    if load_dotenv:
-        load_dotenv()
+    load_dispatcharr_dotenv()
 
     ap = argparse.ArgumentParser(description="Nufu live slot 1-50 maintenance")
     sub = ap.add_subparsers(dest="cmd", required=True)

@@ -39,12 +39,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None  # type: ignore[assignment]
-
-from dispatcharr_client import DispatcharrClient, config_from_env
+from dispatcharr_client import DispatcharrClient, config_from_env, load_dispatcharr_dotenv
 
 LOG = logging.getLogger("sync_streams")
 
@@ -231,8 +226,7 @@ def remap_plans(
 
 def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    if load_dotenv:
-        load_dotenv()
+    load_dispatcharr_dotenv()
 
     ap = argparse.ArgumentParser(
         description="Refresh M3U then remap channel stream IDs to refreshed rows",

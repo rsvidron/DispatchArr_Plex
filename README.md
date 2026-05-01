@@ -7,7 +7,7 @@ Official API docs: [Dispatcharr API overview](https://mintlify.wiki/Dispatcharr/
 ## Requirements
 
 - Python **3.10+** (uses `py -3` on Windows)
-- A Dispatcharr instance reachable from this machine (e.g. `http://192.168.x.x:9191`)
+- A Dispatcharr instance reachable from this machine (configure URL via `.env`; nothing is hardcoded)
 - An API key (**Profile** in the UI) or username/password for JWT
 
 ## Setup
@@ -22,7 +22,10 @@ Edit `.env`:
 
 | Variable | Description |
 |----------|-------------|
-| `DISPATCHARR_BASE_URL` | Server root, no trailing slash (e.g. `http://192.168.5.82:9191`) |
+| `DISPATCHARR_BASE_URL` | Full server URL, no trailing slash (e.g. `http://lan-host:9191`). **Preferred.** |
+| `DISPATCHARR_HOST` | If `BASE_URL` is unset: hostname or IP only; optional with `DISPATCHARR_PORT` and `DISPATCHARR_SCHEME` (default `http`). |
+| `DISPATCHARR_PORT` | Optional; used only when building URL from `DISPATCHARR_HOST`. |
+| `DISPATCHARR_SCHEME` | Optional; `http` or `https` when using `HOST`/`PORT`. |
 | `DISPATCHARR_API_KEY` | Preferred for scripts / Task Scheduler |
 | `DISPATCHARR_POST_REFRESH_WAIT` | Seconds to wait after M3U refresh before rebuilding stream index (default `60`) |
 
@@ -55,6 +58,8 @@ py -3 sync_streams_after_m3u.py --map-nufu-live-games --dry-run
 ## Windows Task Scheduler
 
 Use `run_dispatcharr_daily.bat`. Logs go to `logs\run_YYYY-MM-dd_HHmmss.log`. See comments inside the `.bat` for **Program** / **Start in** settings.
+
+Scripts load **`.env` from the repository folder** (next to `dispatcharr_client.py`), not from the process “current directory”. That way scheduled tasks still pick up secrets even if **Start in** is wrong. You still need a real **`.env`** on the machine (copy from `.env.example`); **`.env.example` is never loaded by the code**—only documentation.
 
 The scheduled account needs network access to your Dispatcharr host and `py` on `PATH`.
 

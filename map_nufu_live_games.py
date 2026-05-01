@@ -44,12 +44,7 @@ import sys
 import time
 from typing import Any
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None  # type: ignore[assignment]
-
-from dispatcharr_client import DispatcharrClient, config_from_env
+from dispatcharr_client import DispatcharrClient, config_from_env, load_dispatcharr_dotenv
 
 from nufu_live_slot_maintenance import (
     _list_channels,
@@ -188,8 +183,7 @@ def run_map_nufu_live_games(
 
 def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    if load_dotenv:
-        load_dotenv()
+    load_dispatcharr_dotenv()
 
     ap = argparse.ArgumentParser(description="Map Nufu Live-Games streams to channels 1-50")
     ap.add_argument("--apply", action="store_true", help="PATCH channels (default is dry run)")

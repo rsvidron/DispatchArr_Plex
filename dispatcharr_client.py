@@ -8,16 +8,31 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterator, Optional
 from urllib.parse import urljoin
 
 import requests
 
 
+def load_dispatcharr_dotenv() -> None:
+    """Load `.env` from the repository folder containing this file.
+
+    ``python-dotenv``'s default ``load_dotenv()`` reads only the *current working directory*,
+    which breaks Task Scheduler, systemd, or SSH runs that don't ``cd`` into the repo.
+    """
+    try:
+        from dotenv import load_dotenv as _load_dotenv
+    except ImportError:
+        return
+    env_file = Path(__file__).resolve().parent / ".env"
+    _load_dotenv(env_file)
+
+
 @dataclass
 class DispatcharrConfig:
     base_url: str
-    """Server root, e.g. http://192.168.5.82:9191 (no trailing slash)."""
+    """Server root from DISPATCHARR_BASE_URL or HOST/PORT (no trailing slash)."""
 
     api_key: Optional[str] = None
     username: Optional[str] = None
@@ -265,10 +280,30 @@ class DispatcharrClient:
         r.raise_for_status()
 
 
+def resolve_dispatcharr_base_url() -> str:
+    """Prefer DISPATCHARR_BASE_URL; otherwise build from HOST (+ optional PORT, SCHEME)."""
+    raw = os.environ.get("DISPATCHARR_BASE_URL", "").strip().rstrip("/")
+    if raw:
+        return raw
+
+    host = os.environ.get("DISPATCHARR_HOST", "").strip()
+    if not host:
+        return ""
+
+    scheme = os.environ.get("DISPATCHARR_SCHEME", "http").strip().rstrip(":/") or "http"
+    port = os.environ.get("DISPATCHARR_PORT", "").strip()
+    if port:
+        return f"{scheme}://{host}:{port}".rstrip("/")
+    return f"{scheme}://{host}".rstrip("/")
+
+
 def config_from_env() -> DispatcharrConfig:
-    base = os.environ.get("DISPATCHARR_BASE_URL", "").rstrip("/")
+    base = resolve_dispatcharr_base_url()
     if not base:
-        raise SystemExit("Set DISPATCHARR_BASE_URL (e.g. http://192.168.5.82:9191)")
+        raise SystemExit(
+            "Set DISPATCHARR_BASE_URL (full URL, no trailing slash), "
+            "or DISPATCHARR_HOST with optional DISPATCHARR_PORT and DISPATCHARR_SCHEME (default http)."
+        )
 
     api_key = os.environ.get("DISPATCHARR_API_KEY")
     user = os.environ.get("DISPATCHARR_USERNAME")
