@@ -1,5 +1,5 @@
 @echo off
-REM Dispatcharr: refresh M3U, remap all channels, map Nufu Live-Games (500-550) + Live-Channels (from 26; 1-25 manual).
+REM Dispatcharr: refresh M3U, remap all channels, map Nufu Live-Games (500-550) + Live-Channels (from 101; 1-100 manual).
 REM Requires: Python on PATH (py launcher), .env in this folder with API settings.
 REM
 REM Task Scheduler example:

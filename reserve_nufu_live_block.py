@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Reserve a contiguous dial block for Nufu live-game placeholders and move every *other*
-channel to start at DISPATCHARR_NUFU_MAIN_LIBRARY_START (default **26**), preserving order.
+channel to start at DISPATCHARR_NUFU_MAIN_LIBRARY_START (default **101**), preserving order.
 
 Default layout (env defaults): live games **500–550** (51 × ``Nufu Live Games NN``);
-other automated channels **26, 27, …** (dials **1–25** left for manual channels).
+other automated channels **101, 102, …** (dials **1–100** left for manual channels).
 
 - First run (--apply): bump all current channel_number values to a temporary range,
   create placeholder channels at ``CHANNEL_START`` … ``CHANNEL_START + MAX_SLOTS - 1``,
@@ -21,7 +21,7 @@ Env:
     Names are "{prefix} 01" … "{prefix} NN" (NN zero-padded to width 2).
   DISPATCHARR_NUFU_LIVE_CHANNEL_START — first dial for slot 1 (default 500).
   DISPATCHARR_NUFU_LIVE_MAX_SLOTS — number of game slots (default 51 → dials 500–550).
-  DISPATCHARR_NUFU_MAIN_LIBRARY_START — first dial for non-game channels after init (default 26; dials 1–25 left for manual).
+  DISPATCHARR_NUFU_MAIN_LIBRARY_START — first dial for non-game channels after init (default 101; dials 1–100 left for manual).
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def _channel_start() -> int:
 
 
 def _main_library_start() -> int:
-    return int(os.environ.get("DISPATCHARR_NUFU_MAIN_LIBRARY_START", "26"))
+    return int(os.environ.get("DISPATCHARR_NUFU_MAIN_LIBRARY_START", "101"))
 
 
 def _reserved_regex(prefix: str) -> re.Pattern[str]:

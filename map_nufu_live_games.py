@@ -39,7 +39,7 @@ Env (live channels — separate block):
   DISPATCHARR_NUFU_LIVE_CHANNELS_PREFIX (default Nufu Live Channels),
   DISPATCHARR_NUFU_LIVE_CHANNELS_STREAM_GROUP (default Live-Channels),
   DISPATCHARR_NUFU_LIVE_CHANNELS_MAX_SLOTS (default 100),
-  DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_START (default 26 — reserve dials 1–25 for manual channels),
+  DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_START (default 101 — reserve dials 1–100 for manual channels),
   DISPATCHARR_NUFU_LIVE_CHANNELS_SYNC_TVG_ID,
   DISPATCHARR_NUFU_LIVE_CHANNELS_MAPPING — path to JSON (see nufu_live_channels_mapping.py),
   DISPATCHARR_NUFU_LIVE_CHANNELS_ORDERED_FALLBACK — if true, use sorted-name fill when JSON missing (unstable)
@@ -148,7 +148,7 @@ def _live_channels_max_slots() -> int:
 
 
 def _live_channels_channel_start() -> int:
-    return int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_START", "26"))
+    return int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_START", "101"))
 
 
 def _live_channels_sync_tvg_id() -> bool:
