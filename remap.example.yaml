@@ -1,0 +1,21 @@
+# Optional: point streams at the right sources after M3U refresh.
+# Run: python daily_refresh.py --remap remap.example.yaml
+
+# If you use stream_match without per-entry m3u_account, set this:
+# default_m3u_account: 1
+
+remap:
+  # By channel id (from API or UI):
+  - channel_id: 123
+    stream_ids: [456, 789] # primary then failover
+
+  # By channel name regex (first match wins):
+  - channel_name_regex: "^HBO\\b"
+    m3u_account: 1
+    stream_match:
+      name_regex: "HBO.*East"
+    # allow_multiple_streams: true  # if several rows match and you want them all
+
+  - channel_name_regex: "^CNN\\b"
+    stream_match:
+      tvg_id: "cnn.us"
