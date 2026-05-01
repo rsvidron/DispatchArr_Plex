@@ -7,6 +7,7 @@ API reference: https://mintlify.wiki/Dispatcharr/Dispatcharr/api/overview
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Optional
@@ -15,18 +16,32 @@ from urllib.parse import urljoin
 import requests
 
 
+def _python_dotenv_installed() -> bool:
+    try:
+        import dotenv  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def load_dispatcharr_dotenv() -> None:
     """Load `.env` from the repository folder containing this file.
 
     ``python-dotenv``'s default ``load_dotenv()`` reads only the *current working directory*,
     which breaks Task Scheduler, systemd, or SSH runs that don't ``cd`` into the repo.
     """
+    env_file = Path(__file__).resolve().parent / ".env"
     try:
         from dotenv import load_dotenv as _load_dotenv
     except ImportError:
+        print(
+            "WARNING: python-dotenv is not installed — .env files are ignored. "
+            "Run: py -3 -m pip install python-dotenv",
+            file=sys.stderr,
+        )
         return
-    env_file = Path(__file__).resolve().parent / ".env"
-    _load_dotenv(env_file)
+    if env_file.is_file():
+        _load_dotenv(env_file)
 
 
 @dataclass
@@ -300,10 +315,28 @@ def resolve_dispatcharr_base_url() -> str:
 def config_from_env() -> DispatcharrConfig:
     base = resolve_dispatcharr_base_url()
     if not base:
-        raise SystemExit(
-            "Set DISPATCHARR_BASE_URL (full URL, no trailing slash), "
-            "or DISPATCHARR_HOST with optional DISPATCHARR_PORT and DISPATCHARR_SCHEME (default http)."
-        )
+        env_path = Path(__file__).resolve().parent / ".env"
+        lines = [
+            "Set DISPATCHARR_BASE_URL (full URL, no trailing slash), or DISPATCHARR_HOST with",
+            "optional DISPATCHARR_PORT and DISPATCHARR_SCHEME (default http).",
+            "",
+        ]
+        if not _python_dotenv_installed():
+            lines.append(
+                "This install is missing python-dotenv, so .env is never read. Run:\n"
+                "  py -3 -m pip install -r requirements.txt"
+            )
+        elif not env_path.is_file():
+            lines.append(
+                f"No .env file at:\n  {env_path}\n"
+                "Copy .env.example to .env on the machine that runs the script, or set the variables in Windows / Task Scheduler."
+            )
+        else:
+            lines.append(
+                f".env exists at {env_path} but DISPATCHARR_BASE_URL (or HOST) is still empty.\n"
+                "Check: one line like DISPATCHARR_BASE_URL=http://192.168.1.1:9191 (no spaces around =), file saved as UTF-8, and the same folder as dispatcharr_client.py on the run host."
+            )
+        raise SystemExit("\n".join(lines))
 
     api_key = os.environ.get("DISPATCHARR_API_KEY")
     user = os.environ.get("DISPATCHARR_USERNAME")
