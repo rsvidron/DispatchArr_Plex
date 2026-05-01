@@ -295,6 +295,38 @@ class DispatcharrClient:
         r.raise_for_status()
 
 
+def channel_group_id_from_stream_group(
+    client: DispatcharrClient,
+    *,
+    m3u_account_id: int,
+    stream_group: str,
+    hide_stale: bool = False,
+) -> int:
+    """Resolve ``channel_group_id`` from any stream in that M3U playlist group (e.g. ``Live-Games``).
+
+    Dispatcharr ties channels to the same numeric group id as streams in that category.
+    Do **not** use ``iter_streams`` without a group filter — the first row may be another group.
+    """
+    s = next(
+        client.iter_streams(
+            page_size=30,
+            m3u_account=m3u_account_id,
+            channel_group=stream_group,
+            hide_stale=hide_stale,
+        ),
+        None,
+    )
+    if not s:
+        raise ValueError(
+            f"No stream in group {stream_group!r} for M3U account {m3u_account_id}. "
+            "Refresh M3U or check DISPATCHARR_NUFU_* group env names.",
+        )
+    cg = s.get("channel_group")
+    if not isinstance(cg, int):
+        raise ValueError("Stream row missing numeric channel_group.")
+    return cg
+
+
 def resolve_dispatcharr_base_url() -> str:
     """Prefer DISPATCHARR_BASE_URL; otherwise build from HOST (+ optional PORT, SCHEME)."""
     raw = os.environ.get("DISPATCHARR_BASE_URL", "").strip().rstrip("/")

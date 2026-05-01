@@ -1,5 +1,5 @@
 @echo off
-REM Dispatcharr: refresh M3U, remap all channels, map Nufu Live-Games to slots 1-50.
+REM Dispatcharr: refresh M3U, remap all channels, map Nufu Live-Games + Live-Channels.
 REM Requires: Python on PATH (py launcher), .env in this folder with API settings.
 REM
 REM Task Scheduler example:
@@ -17,7 +17,7 @@ for /f "usebackq delims=" %%t in (`powershell -NoProfile -Command "Get-Date -For
 set "LOGFILE=%~dp0logs\run_!RUNSTAMP!.log"
 
 echo [%date% %time%] Starting sync...>> "!LOGFILE!"
-py -3 sync_streams_after_m3u.py --map-nufu-live-games >> "!LOGFILE!" 2>&1
+py -3 sync_streams_after_m3u.py --map-nufu-live-games --map-nufu-live-channels >> "!LOGFILE!" 2>&1
 set "EC=!ERRORLEVEL!"
 echo [%date% %time%] Exit code: !EC!>> "!LOGFILE!"
 

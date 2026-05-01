@@ -15,6 +15,7 @@ channel to start at 51 (preserving previous channel_number order).
 Env:
   DISPATCHARR_NUFU_M3U_ACCOUNT_ID — optional; defaults to account whose name
     contains "nufu" (case-insensitive).
+  DISPATCHARR_NUFU_LIVE_STREAM_GROUP — which playlist group supplies channel_group_id (default Live-Games).
   DISPATCHARR_NUFU_LIVE_PREFIX — placeholder channel name prefix (default:
     Nufu Live Games). Channel names are "{prefix} 01" .. "{prefix} 50".
 """
@@ -28,7 +29,12 @@ import re
 import sys
 from typing import Any, Optional
 
-from dispatcharr_client import DispatcharrClient, config_from_env, load_dispatcharr_dotenv
+from dispatcharr_client import (
+    DispatcharrClient,
+    channel_group_id_from_stream_group,
+    config_from_env,
+    load_dispatcharr_dotenv,
+)
 
 LOG = logging.getLogger("reserve_nufu")
 
@@ -45,14 +51,6 @@ def _nufu_account_id(client: DispatcharrClient) -> int:
         "Could not find a M3U account with 'nufu' in the name. "
         "Set DISPATCHARR_NUFU_M3U_ACCOUNT_ID."
     )
-
-
-def _channel_group_from_nufu_stream(client: DispatcharrClient, account_id: int) -> int:
-    s = next(client.iter_streams(m3u_account=account_id, page_size=1, hide_stale=False))
-    cg = s.get("channel_group")
-    if not isinstance(cg, int):
-        raise SystemExit("Could not read channel_group from a Nufu stream row.")
-    return cg
 
 
 def _prefix() -> str:
@@ -126,8 +124,22 @@ def run_init(client: DispatcharrClient, *, apply: bool, prefix: str) -> None:
         client.patch_channel(cid, {"channel_number": float(bias + cid)})
 
     nufu_id = _nufu_account_id(client)
-    cg = _channel_group_from_nufu_stream(client, nufu_id)
-    LOG.info("Using Nufu M3U account id=%s channel_group_id=%s", nufu_id, cg)
+    sg = os.environ.get("DISPATCHARR_NUFU_LIVE_STREAM_GROUP", "Live-Games").strip()
+    try:
+        cg = channel_group_id_from_stream_group(
+            client,
+            m3u_account_id=nufu_id,
+            stream_group=sg,
+            hide_stale=False,
+        )
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
+    LOG.info(
+        "Using Nufu M3U account id=%s stream_group=%r channel_group_id=%s",
+        nufu_id,
+        sg,
+        cg,
+    )
 
     for i in range(1, 51):
         name = f"{prefix} {i:02d}"

@@ -6,8 +6,11 @@ prune  — DELETE any 1–50 live slot whose streams are empty or only *stale* r
          so finished / non-existent games disappear from Dispatcharr entirely.
 
 ensure — Recreate any missing "Nufu Live Games NN" channels for numbers 1–50
-         (after prune, or partial deletes). Uses the same Nufu channel_group as
-         reserve_nufu_live_block.py.
+         (after prune, or partial deletes). channel_group_id comes from a **Live-Games**
+         stream row (DISPATCHARR_NUFU_LIVE_STREAM_GROUP).
+
+fix-game-groups — PATCH existing Live Games placeholders onto that Live-Games group if the UI
+         showed them under Live-Channels (older code used the wrong stream row).
 
 Typical schedule:
   - After games / before export:  py -3 nufu_live_slot_maintenance.py prune --apply
@@ -28,7 +31,12 @@ import re
 import sys
 from typing import Any, Optional
 
-from dispatcharr_client import DispatcharrClient, config_from_env, load_dispatcharr_dotenv
+from dispatcharr_client import (
+    DispatcharrClient,
+    channel_group_id_from_stream_group,
+    config_from_env,
+    load_dispatcharr_dotenv,
+)
 
 LOG = logging.getLogger("nufu_live_slots")
 
@@ -48,16 +56,9 @@ def _nufu_account_id(client: DispatcharrClient) -> int:
     raise SystemExit("Set DISPATCHARR_NUFU_M3U_ACCOUNT_ID or add 'nufu' to the M3U account name.")
 
 
-def _channel_group_from_nufu_stream(client: DispatcharrClient, account_id: int) -> int:
-    s = next(client.iter_streams(m3u_account=account_id, page_size=1, hide_stale=False))
-    cg = s.get("channel_group")
-    if not isinstance(cg, int):
-        raise SystemExit("Could not read channel_group from a Nufu stream row.")
-    return cg
-
-
 def _name_regex(prefix: str) -> re.Pattern[str]:
-    return re.compile(rf"^{re.escape(prefix)}\s+(\d{{2}})\s*$", re.I)
+    """Match '{prefix} N' with one or more digits (01, 50, 97, …)."""
+    return re.compile(rf"^{re.escape(prefix)}\s+(\d+)\s*$", re.I)
 
 
 def _list_channels(client: DispatcharrClient) -> list[dict[str, Any]]:
@@ -77,8 +78,18 @@ def _load_streams_by_id(client: DispatcharrClient, *, hide_stale: bool) -> dict[
     return out
 
 
-def _placeholder_slots(channels: list[dict[str, Any]], prefix: str) -> dict[int, dict[str, Any]]:
-    """slot 1..50 -> channel dict (matched by name only)."""
+def _max_slots_default() -> int:
+    return max(1, min(100, int(os.environ.get("DISPATCHARR_NUFU_LIVE_MAX_SLOTS", "50"))))
+
+
+def _placeholder_slots(
+    channels: list[dict[str, Any]],
+    prefix: str,
+    *,
+    max_slot: int | None = None,
+) -> dict[int, dict[str, Any]]:
+    """slot 1..max_slot -> channel dict (matched by name only)."""
+    cap = max_slot if max_slot is not None else _max_slots_default()
     rx = _name_regex(prefix)
     out: dict[int, dict[str, Any]] = {}
     for ch in channels:
@@ -86,7 +97,7 @@ def _placeholder_slots(channels: list[dict[str, Any]], prefix: str) -> dict[int,
         if not m:
             continue
         n = int(m.group(1))
-        if 1 <= n <= 50:
+        if 1 <= n <= cap:
             out[n] = ch
     return out
 
@@ -108,7 +119,7 @@ def _has_active_stream(ch: dict[str, Any], stream_by_id: dict[int, dict[str, Any
 def cmd_prune(client: DispatcharrClient, *, apply: bool, allow_all_inactive: bool) -> int:
     prefix = _prefix()
     channels = _list_channels(client)
-    slots = _placeholder_slots(channels, prefix)
+    slots = _placeholder_slots(channels, prefix, max_slot=_max_slots_default())
     if not slots:
         LOG.info("No channels match %r 01..50; nothing to prune.", prefix)
         return 0
@@ -151,21 +162,50 @@ def cmd_prune(client: DispatcharrClient, *, apply: bool, allow_all_inactive: boo
     return 0
 
 
-def cmd_ensure(client: DispatcharrClient, *, apply: bool) -> int:
-    prefix = _prefix()
+def ensure_placeholder_slots(
+    client: DispatcharrClient,
+    *,
+    prefix: str,
+    max_slots: int,
+    channel_start: int,
+    apply: bool,
+    stream_group_for_create: str | None = None,
+) -> int:
+    """Create missing '{prefix} NN' channels with dial positions channel_start..+.
+
+    ``stream_group_for_create`` selects which playlist group's ``channel_group_id`` to use
+    (e.g. ``Live-Games`` for Nufu Live Games rows, ``Live-Channels`` for Nufu Live Channels).
+    """
     channels = _list_channels(client)
-    existing = _placeholder_slots(channels, prefix)
-    missing = [n for n in range(1, 51) if n not in existing]
+    existing = _placeholder_slots(channels, prefix, max_slot=max_slots)
+    missing = [n for n in range(1, max_slots + 1) if n not in existing]
     if not missing:
-        LOG.info("All 50 placeholders already exist for prefix %r.", prefix)
+        LOG.info("All %s placeholders already exist for prefix %r.", max_slots, prefix)
         return 0
 
     nufu_id = _nufu_account_id(client)
-    cg = _channel_group_from_nufu_stream(client, nufu_id)
+    sg = (
+        stream_group_for_create
+        or os.environ.get("DISPATCHARR_NUFU_LIVE_STREAM_GROUP", "Live-Games").strip()
+    )
+    try:
+        cg = channel_group_id_from_stream_group(
+            client,
+            m3u_account_id=nufu_id,
+            stream_group=sg,
+            hide_stale=False,
+        )
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
     LOG.info(
-        "Creating %s missing placeholders (Nufu account=%s channel_group=%s)",
+        "Creating %s missing placeholders (prefix=%r max=%s dial_start=%s Nufu account=%s "
+        "stream_group=%r channel_group_id=%s)",
         len(missing),
+        prefix,
+        max_slots,
+        channel_start,
         nufu_id,
+        sg,
         cg,
     )
     if not apply:
@@ -174,8 +214,78 @@ def cmd_ensure(client: DispatcharrClient, *, apply: bool) -> int:
 
     for n in missing:
         name = f"{prefix} {n:02d}"
-        client.create_channel(name=name, channel_number=float(n), channel_group_id=cg)
-        LOG.info("Created %s ch#%s", name, n)
+        chno = float(channel_start + n - 1)
+        client.create_channel(name=name, channel_number=chno, channel_group_id=cg)
+        LOG.info("Created %s dial=%s", name, chno)
+    return 0
+
+
+def cmd_ensure(client: DispatcharrClient, *, apply: bool) -> int:
+    prefix = _prefix()
+    max_slots = _max_slots_default()
+    channel_start = int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNEL_START", "1"))
+    return ensure_placeholder_slots(
+        client,
+        prefix=prefix,
+        max_slots=max_slots,
+        channel_start=channel_start,
+        apply=apply,
+        stream_group_for_create=os.environ.get(
+            "DISPATCHARR_NUFU_LIVE_STREAM_GROUP",
+            "Live-Games",
+        ).strip(),
+    )
+
+
+def cmd_fix_live_games_group(client: DispatcharrClient, *, apply: bool) -> int:
+    """Set channel_group_id on Nufu Live Games NN channels from a Live-Games stream row (fixes wrong UI group)."""
+    prefix = _prefix()
+    max_slot = _max_slots_default()
+    nufu_id = _nufu_account_id(client)
+    sg = os.environ.get("DISPATCHARR_NUFU_LIVE_STREAM_GROUP", "Live-Games").strip()
+    try:
+        target_cg = channel_group_id_from_stream_group(
+            client,
+            m3u_account_id=nufu_id,
+            stream_group=sg,
+            hide_stale=False,
+        )
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
+
+    rx = _name_regex(prefix)
+    patched = 0
+    already = 0
+    for ch in client.iter_channels(page_size=500):
+        m = rx.match(str(ch.get("name") or ""))
+        if not m:
+            continue
+        n = int(m.group(1))
+        if not (1 <= n <= max_slot):
+            continue
+        cid = int(ch["id"])
+        cur = ch.get("channel_group_id")
+        if cur == target_cg:
+            already += 1
+            continue
+        LOG.info(
+            "PATCH channel id=%s %r channel_group_id %s -> %s (from stream group %r)",
+            cid,
+            ch.get("name"),
+            cur,
+            target_cg,
+            sg,
+        )
+        if apply:
+            client.patch_channel(cid, {"channel_group_id": target_cg})
+        patched += 1
+    LOG.info(
+        "fix-live-games-group: %s updated, %s already Live-Games group (%s)%s.",
+        patched,
+        already,
+        target_cg,
+        "" if apply else " dry-run",
+    )
     return 0
 
 
@@ -207,6 +317,12 @@ def main(argv: list[str]) -> int:
     p_ensure = sub.add_parser("ensure", help="Create missing Nufu Live Games 01..50 channels")
     p_ensure.add_argument("--apply", action="store_true", help="Perform POST creates")
 
+    p_fix_grp = sub.add_parser(
+        "fix-game-groups",
+        help="PATCH Live Games placeholders to Live-Games channel_group_id (after mistaken Live-Channels)",
+    )
+    p_fix_grp.add_argument("--apply", action="store_true", help="Perform PATCH")
+
     args = ap.parse_args(argv)
     client = DispatcharrClient(config_from_env())
 
@@ -214,6 +330,8 @@ def main(argv: list[str]) -> int:
         return cmd_prune(client, apply=args.apply, allow_all_inactive=args.allow_all_inactive)
     if args.cmd == "ensure":
         return cmd_ensure(client, apply=args.apply)
+    if args.cmd == "fix-game-groups":
+        return cmd_fix_live_games_group(client, apply=args.apply)
     return 1
 
 
