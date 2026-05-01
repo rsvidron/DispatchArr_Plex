@@ -43,6 +43,8 @@ Env (live channels — separate block):
   DISPATCHARR_NUFU_LIVE_CHANNELS_SYNC_TVG_ID,
   DISPATCHARR_NUFU_LIVE_CHANNELS_MAPPING — path to JSON (see nufu_live_channels_mapping.py),
   DISPATCHARR_NUFU_LIVE_CHANNELS_ORDERED_FALLBACK — if true, use sorted-name fill when JSON missing (unstable)
+  DISPATCHARR_NUFU_LIVE_CHANNELS_SYNC_CHANNEL_NAME — PATCH channel name to stream title (default 1; Plex/guide).
+  DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_NAME_TEMPLATE — default {title}; same placeholders as live games.
   DISPATCHARR_NUFU_LIVE_CHANNELS_MODE — by_channel_number (default) | placeholders.
     Use by_channel_number when M3U already created channels on each dial (51+): map into those
     rows and avoid duplicate "Nufu Live Channels NN" placeholders. placeholders = old behavior.
@@ -101,6 +103,24 @@ def _sync_channel_name_games() -> bool:
 def _live_game_channel_display_name(stream: dict[str, Any], slot: int, *, prefix: str) -> str:
     """Build channel ``name`` for guide/Plex; placeholders ``{title}`` ``{slot}`` ``{slot:02d}``."""
     tmpl = os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNEL_NAME_TEMPLATE", "{title}").strip()
+    title = str(stream.get("name") or "").strip()
+    out = (
+        tmpl.replace("{slot:02d}", f"{slot:02d}")
+        .replace("{slot}", str(slot))
+        .replace("{title}", title)
+    )
+    out = out.strip()
+    return out or f"{prefix} {slot:02d}"
+
+
+def _sync_channel_name_live_channels() -> bool:
+    v = os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNELS_SYNC_CHANNEL_NAME", "1").strip().lower()
+    return v not in ("0", "false", "no", "off")
+
+
+def _live_channels_stream_display_name(stream: dict[str, Any], slot: int, *, prefix: str) -> str:
+    """Channel display name for Live-Channels slots (``DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_NAME_TEMPLATE``)."""
+    tmpl = os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_NAME_TEMPLATE", "{title}").strip()
     title = str(stream.get("name") or "").strip()
     out = (
         tmpl.replace("{slot:02d}", f"{slot:02d}")
@@ -313,7 +333,10 @@ def _patch_slots_from_streams(
                 gid = _guide_tvg_id_from_stream(st)
                 body["tvg_id"] = gid or None
             if sync_channel_display_name and display_name_prefix is not None:
-                body["name"] = _live_game_channel_display_name(st, slot, prefix=display_name_prefix)
+                if block_label == "live-channels":
+                    body["name"] = _live_channels_stream_display_name(st, slot, prefix=display_name_prefix)
+                else:
+                    body["name"] = _live_game_channel_display_name(st, slot, prefix=display_name_prefix)
             if sync_tvg_id:
                 LOG.info(
                     "[%s] Slot %02d channel id=%s <- stream id=%s name=%r tvg_id=%r ch_name=%r",
@@ -565,9 +588,12 @@ def run_map_nufu_live_channels(
     wait_after_refresh: int | None,
     ensure_placeholders: bool,
     sync_tvg_id: bool | None = None,
+    sync_channel_display_name: bool | None = None,
 ) -> int:
     if sync_tvg_id is None:
         sync_tvg_id = _live_channels_sync_tvg_id()
+    if sync_channel_display_name is None:
+        sync_channel_display_name = _sync_channel_name_live_channels()
 
     prefix = _live_channels_prefix()
     stream_group = _live_channels_stream_group()
@@ -595,6 +621,7 @@ def run_map_nufu_live_channels(
                 ensure_placeholders=ensure_placeholders,
                 sync_tvg_id=sync_tvg_id,
                 block_label="live-channels",
+                sync_channel_display_name=sync_channel_display_name,
             )
         LOG.error(
             "live-channels: no slot mapping at %s. For stable Plex order, run:\n"
@@ -685,6 +712,7 @@ def run_map_nufu_live_channels(
         len(streams),
     )
     LOG.info("[live-channels] PATCH channel tvg_id from stream: %s", sync_tvg_id)
+    LOG.info("[live-channels] PATCH channel name from stream (guide/Plex): %s", sync_channel_display_name)
 
     resolved = resolve_mapped_streams(entries, streams, max_slot=max_slots)
 
@@ -704,6 +732,8 @@ def run_map_nufu_live_channels(
         sync_tvg_id=sync_tvg_id,
         apply=apply,
         block_label="live-channels",
+        sync_channel_display_name=sync_channel_display_name,
+        display_name_prefix=prefix if sync_channel_display_name else None,
     )
 
     if not apply:

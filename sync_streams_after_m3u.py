@@ -26,6 +26,7 @@ Optional Nufu live (same placeholder names as reserve_nufu_live_block.py):
   --map-nufu-no-sync-tvg-id — do not PATCH channel tvg_id for live games
   --map-nufu-no-sync-channel-name — do not PATCH channel name to game title (guide/Plex label)
   --map-nufu-live-channels-no-sync-tvg-id — do not PATCH tvg_id for live channels
+  --map-nufu-live-channels-no-sync-channel-name — do not PATCH live-channel display name to stream title
   --prune-unused-nufu-live-slots — remove placeholder channels with no active stream
   --prune-nufu-allow-all-inactive — required when every 1-50 slot would be removed
 """
@@ -75,6 +76,28 @@ def strip_nufu_live_game_plans_from_generic_remap(plans: list[dict[str, Any]]) -
             "(slots 1-%s filled next by --map-nufu-live-games only)",
             skipped,
             max_slot,
+        )
+    return out
+
+
+def strip_nufu_live_channel_plans_from_generic_remap(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """When using --map-nufu-live-channels, only that step should assign streams to Nufu Live Channels NN."""
+    prefix = os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNELS_PREFIX", "Nufu Live Channels").strip()
+    max_slot = max(1, min(100, int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNELS_MAX_SLOTS", "100"))))
+    rx = re.compile(rf"^{re.escape(prefix)}\s+(\d+)\s*$", re.I)
+    out: list[dict[str, Any]] = []
+    skipped = 0
+    for p in plans:
+        m = rx.match(str(p.get("channel_name") or ""))
+        if m and 1 <= int(m.group(1)) <= max_slot:
+            skipped += 1
+            continue
+        out.append(p)
+    if skipped:
+        LOG.info(
+            "Excluded %s Nufu Live Channels placeholder(s) from generic remap "
+            "(filled by --map-nufu-live-channels only)",
+            skipped,
         )
     return out
 
@@ -333,6 +356,11 @@ def main(argv: list[str]) -> int:
         help="With --map-nufu-live-channels, only set streams (do not PATCH channel tvg_id)",
     )
     ap.add_argument(
+        "--map-nufu-live-channels-no-sync-channel-name",
+        action="store_true",
+        help="With --map-nufu-live-channels, keep placeholder names (do not PATCH name to stream title)",
+    )
+    ap.add_argument(
         "--prune-unused-nufu-live-slots",
         action="store_true",
         help="After remap, delete Nufu Live Games 01-50 channels with no non-stale streams",
@@ -365,6 +393,9 @@ def main(argv: list[str]) -> int:
 
     if args.map_nufu_live_games:
         plans = strip_nufu_live_game_plans_from_generic_remap(plans)
+
+    if args.map_nufu_live_channels:
+        plans = strip_nufu_live_channel_plans_from_generic_remap(plans)
 
     if not args.skip_refresh:
         if args.m3u_account is not None:
@@ -454,6 +485,7 @@ def main(argv: list[str]) -> int:
             wait_after_refresh=wait,
             ensure_placeholders=not args.map_nufu_live_channels_no_ensure,
             sync_tvg_id=False if args.map_nufu_live_channels_no_sync_tvg_id else None,
+            sync_channel_display_name=False if args.map_nufu_live_channels_no_sync_channel_name else None,
         )
         if rc != 0:
             return rc

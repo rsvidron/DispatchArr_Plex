@@ -58,6 +58,11 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Do not PATCH channel tvg_id (only assign/clear streams)",
     )
+    ap.add_argument(
+        "--no-sync-channel-name",
+        action="store_true",
+        help="Do not PATCH channel name to stream title (keep Nufu Live Channels NN placeholders)",
+    )
     args = ap.parse_args(argv)
 
     client = DispatcharrClient(config_from_env())
@@ -81,6 +86,7 @@ def main(argv: list[str]) -> int:
         wait_after_refresh=args.wait_after_refresh,
         ensure_placeholders=not args.no_ensure,
         sync_tvg_id=False if args.no_sync_tvg_id else None,
+        sync_channel_display_name=False if args.no_sync_channel_name else None,
     )
 
 
