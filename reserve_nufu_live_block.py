@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
 """
-Reserve channel numbers 1–50 for Nufu live-game slots, and move every *existing*
-channel to start at 51 (preserving previous channel_number order).
+Reserve a contiguous dial block for Nufu live-game placeholders and move every *other*
+channel to start at DISPATCHARR_NUFU_MAIN_LIBRARY_START (default **26**), preserving order.
 
-- First run (--apply): bump all current channel_number values to a temporary
-  range (avoids unique-number collisions), create 50 placeholder channels
-  "Nufu Live Games 01" … "50" on a Nufu stream channel_group, then assign
-  your library 51, 52, … in the same order as before.
+Default layout (env defaults): live games **500–550** (51 × ``Nufu Live Games NN``);
+other automated channels **26, 27, …** (dials **1–25** left for manual channels).
 
-- Later runs: if the 50 placeholders are already present, does nothing unless
-  you pass --repair-mains (relabels non-placeholder channels to 51..N by
-  current channel_number sort).
+- First run (--apply): bump all current channel_number values to a temporary range,
+  create placeholder channels at ``CHANNEL_START`` … ``CHANNEL_START + MAX_SLOTS - 1``,
+  then assign former channels to ``MAIN_LIBRARY_START``, ``MAIN_LIBRARY_START+1``, …
+
+- Later runs: if placeholders already match that layout, does nothing unless
+  ``--repair-mains-only`` (relabels non-placeholder channels to sequential dials from ``MAIN_LIBRARY_START``).
 
 Env:
   DISPATCHARR_NUFU_M3U_ACCOUNT_ID — optional; defaults to account whose name
     contains "nufu" (case-insensitive).
-  DISPATCHARR_NUFU_LIVE_STREAM_GROUP — which playlist group supplies channel_group_id (default Live-Games).
-  DISPATCHARR_NUFU_LIVE_PREFIX — placeholder channel name prefix (default:
-    Nufu Live Games). Channel names are "{prefix} 01" .. "{prefix} 50".
+  DISPATCHARR_NUFU_LIVE_STREAM_GROUP — playlist group for channel_group_id (default Live-Games).
+  DISPATCHARR_NUFU_LIVE_PREFIX — placeholder name prefix (default Nufu Live Games).
+    Names are "{prefix} 01" … "{prefix} NN" (NN zero-padded to width 2).
+  DISPATCHARR_NUFU_LIVE_CHANNEL_START — first dial for slot 1 (default 500).
+  DISPATCHARR_NUFU_LIVE_MAX_SLOTS — number of game slots (default 51 → dials 500–550).
+  DISPATCHARR_NUFU_MAIN_LIBRARY_START — first dial for non-game channels after init (default 26; dials 1–25 left for manual).
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ import logging
 import os
 import re
 import sys
-from typing import Any, Optional
+from typing import Any
 
 from dispatcharr_client import (
     DispatcharrClient,
@@ -57,12 +61,24 @@ def _prefix() -> str:
     return os.environ.get("DISPATCHARR_NUFU_LIVE_PREFIX", "Nufu Live Games").strip()
 
 
+def _max_slots() -> int:
+    return max(1, min(100, int(os.environ.get("DISPATCHARR_NUFU_LIVE_MAX_SLOTS", "51"))))
+
+
+def _channel_start() -> int:
+    return int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNEL_START", "500"))
+
+
+def _main_library_start() -> int:
+    return int(os.environ.get("DISPATCHARR_NUFU_MAIN_LIBRARY_START", "26"))
+
+
 def _reserved_regex(prefix: str) -> re.Pattern[str]:
-    return re.compile(rf"^{re.escape(prefix)}\s+(\d{{2}})\s*$", re.I)
+    return re.compile(rf"^{re.escape(prefix)}\s+(\d{{1,3}})\s*$", re.I)
 
 
-def _reserved_slots(channels: list[dict[str, Any]], prefix: str) -> dict[int, dict[str, Any]]:
-    """slot number 1..50 -> channel dict."""
+def _reserved_slots(channels: list[dict[str, Any]], prefix: str, *, max_slot: int) -> dict[int, dict[str, Any]]:
+    """slot number 1..max_slot -> channel dict (by name)."""
     rx = _reserved_regex(prefix)
     out: dict[int, dict[str, Any]] = {}
     for ch in channels:
@@ -70,16 +86,21 @@ def _reserved_slots(channels: list[dict[str, Any]], prefix: str) -> dict[int, di
         if not m:
             continue
         n = int(m.group(1))
-        if 1 <= n <= 50:
+        if 1 <= n <= max_slot:
             out[n] = ch
     return out
 
 
-def _is_migrated(slots: dict[int, dict[str, Any]]) -> bool:
-    if len(slots) != 50:
+def _is_migrated(
+    slots: dict[int, dict[str, Any]],
+    *,
+    channel_start: int,
+    max_slot: int,
+) -> bool:
+    if len(slots) != max_slot:
         return False
     nums = {int(float(ch["channel_number"])) for ch in slots.values()}
-    return nums == set(range(1, 51))
+    return nums == set(range(channel_start, channel_start + max_slot))
 
 
 def _list_channels(client: DispatcharrClient) -> list[dict[str, Any]]:
@@ -92,8 +113,12 @@ def _temp_bias(snapshot_nums: list[float]) -> int:
 
 
 def run_init(client: DispatcharrClient, *, apply: bool, prefix: str) -> None:
+    max_slot = _max_slots()
+    ch_start = _channel_start()
+    main0 = _main_library_start()
+
     channels = _list_channels(client)
-    rx_ids_reserved = {ch["id"] for ch in _reserved_slots(channels, prefix).values()}
+    rx_ids_reserved = {ch["id"] for ch in _reserved_slots(channels, prefix, max_slot=max_slot).values()}
     if rx_ids_reserved:
         raise SystemExit(
             "Some channels already match the Nufu live placeholder name pattern. "
@@ -109,12 +134,16 @@ def run_init(client: DispatcharrClient, *, apply: bool, prefix: str) -> None:
         nums.append(num)
 
     bias = _temp_bias(nums)
+    last_game_dial = ch_start + max_slot - 1
     LOG.info(
-        "Init: %s channels; temp bias +%s; reserve 1-50 as %r 01..50; mains -> %s..",
+        "Init: %s channels; temp bias +%s; reserve dials %s..%s as %r 01..%02d; mains -> %s..",
         len(snapshot),
         bias,
+        ch_start,
+        last_game_dial,
         prefix,
-        51,
+        max_slot,
+        main0,
     )
     if not apply:
         LOG.info("Dry run: no PATCH/POST.")
@@ -141,14 +170,15 @@ def run_init(client: DispatcharrClient, *, apply: bool, prefix: str) -> None:
         cg,
     )
 
-    for i in range(1, 51):
+    for i in range(1, max_slot + 1):
         name = f"{prefix} {i:02d}"
-        client.create_channel(name=name, channel_number=float(i), channel_group_id=cg)
-        LOG.info("Created placeholder %s ch#%s", name, i)
+        dial = float(ch_start + i - 1)
+        client.create_channel(name=name, channel_number=dial, channel_group_id=cg)
+        LOG.info("Created placeholder %s dial=%s", name, int(dial))
 
     mains_sorted = sorted(snapshot.keys(), key=lambda cid: (snapshot[cid][0], cid))
     for idx, cid in enumerate(mains_sorted):
-        new_num = float(51 + idx)
+        new_num = float(main0 + idx)
         client.patch_channel(cid, {"channel_number": new_num})
         if idx < 3 or idx == len(mains_sorted) - 1:
             LOG.info(
@@ -158,16 +188,26 @@ def run_init(client: DispatcharrClient, *, apply: bool, prefix: str) -> None:
                 int(new_num),
             )
     if len(mains_sorted) > 4:
-        LOG.info("... %s more mains renumbered to 52..%s", len(mains_sorted) - 4, 50 + len(mains_sorted))
+        LOG.info(
+            "... %s more mains renumbered to %s..%s",
+            len(mains_sorted) - 4,
+            main0 + 4,
+            main0 + len(mains_sorted) - 1,
+        )
 
 
 def run_repair_mains(client: DispatcharrClient, *, apply: bool, prefix: str) -> None:
+    max_slot = _max_slots()
+    ch_start = _channel_start()
+    main0 = _main_library_start()
+
     channels = _list_channels(client)
-    slots = _reserved_slots(channels, prefix)
-    if not _is_migrated(slots):
+    slots = _reserved_slots(channels, prefix, max_slot=max_slot)
+    if not _is_migrated(slots, channel_start=ch_start, max_slot=max_slot):
         raise SystemExit(
-            "Reserve block not detected (need 50 channels named 'Prefix 01'..'50' "
-            "with channel_number 1..50). Run without --repair-mains-only first."
+            f"Reserve block not detected (need {max_slot} channels named 'Prefix 01'..'Prefix {max_slot:02d}' "
+            f"with channel_number {ch_start}..{ch_start + max_slot - 1}). "
+            "Run without --repair-mains-only first."
         )
 
     reserved_ids = {int(ch["id"]) for ch in slots.values()}
@@ -175,13 +215,14 @@ def run_repair_mains(client: DispatcharrClient, *, apply: bool, prefix: str) -> 
     mains.sort(
         key=lambda ch: (float(ch.get("channel_number") or 0), int(ch["id"])),
     )
-    LOG.info("Repair mains: %s channels -> %s..%s", len(mains), 51, 50 + len(mains))
+    last_main = main0 + len(mains) - 1
+    LOG.info("Repair mains: %s channels -> %s..%s", len(mains), main0, last_main)
     if not apply:
         LOG.info("Dry run: no PATCH.")
         return
 
     for idx, ch in enumerate(mains):
-        new_num = float(51 + idx)
+        new_num = float(main0 + idx)
         cur = float(ch.get("channel_number") or 0)
         if cur != new_num:
             client.patch_channel(int(ch["id"]), {"channel_number": new_num})
@@ -191,7 +232,9 @@ def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     load_dispatcharr_dotenv()
 
-    ap = argparse.ArgumentParser(description="Reserve ch 1–50 for Nufu live; move library to 51+")
+    ap = argparse.ArgumentParser(
+        description="Reserve live-game dial block for Nufu; move other channels to MAIN_LIBRARY_START..",
+    )
     ap.add_argument(
         "--apply",
         action="store_true",
@@ -200,21 +243,21 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--repair-mains-only",
         action="store_true",
-        help="Only relabel non-placeholder channels to 51..N (after slots exist)",
+        help="Only relabel non-placeholder channels to MAIN_LIBRARY_START..N (after slots exist)",
     )
     args = ap.parse_args(argv)
 
     prefix = _prefix()
     client = DispatcharrClient(config_from_env())
     channels = _list_channels(client)
-    slots = _reserved_slots(channels, prefix)
+    slots = _reserved_slots(channels, prefix, max_slot=_max_slots())
 
     if args.repair_mains_only:
         run_repair_mains(client, apply=args.apply, prefix=prefix)
         LOG.info("Done")
         return 0
 
-    if _is_migrated(slots):
+    if _is_migrated(slots, channel_start=_channel_start(), max_slot=_max_slots()):
         LOG.info(
             "Reserve block already present (%s). Nothing to do. Use --repair-mains-only to relabel mains.",
             prefix,

@@ -29,8 +29,8 @@ EPG / guide:
 Env (live games):
   DISPATCHARR_NUFU_M3U_ACCOUNT_ID, DISPATCHARR_NUFU_LIVE_PREFIX,
   DISPATCHARR_NUFU_LIVE_STREAM_GROUP (default Live-Games),
-  DISPATCHARR_NUFU_LIVE_MAX_SLOTS (default 50),
-  DISPATCHARR_NUFU_LIVE_CHANNEL_START (dial position for slot 1; default 1),
+  DISPATCHARR_NUFU_LIVE_MAX_SLOTS (default 51 — dials e.g. 500..550),
+  DISPATCHARR_NUFU_LIVE_CHANNEL_START (dial for slot 1; default 500),
   DISPATCHARR_NUFU_LIVE_SYNC_TVG_ID,
   DISPATCHARR_NUFU_LIVE_SYNC_CHANNEL_NAME (default 1) — PATCH channel name to game title,
   DISPATCHARR_NUFU_LIVE_CHANNEL_NAME_TEMPLATE (default {title})
@@ -39,14 +39,14 @@ Env (live channels — separate block):
   DISPATCHARR_NUFU_LIVE_CHANNELS_PREFIX (default Nufu Live Channels),
   DISPATCHARR_NUFU_LIVE_CHANNELS_STREAM_GROUP (default Live-Channels),
   DISPATCHARR_NUFU_LIVE_CHANNELS_MAX_SLOTS (default 100),
-  DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_START (default 51 — avoids 1–50 game block),
+  DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_START (default 26 — reserve dials 1–25 for manual channels),
   DISPATCHARR_NUFU_LIVE_CHANNELS_SYNC_TVG_ID,
   DISPATCHARR_NUFU_LIVE_CHANNELS_MAPPING — path to JSON (see nufu_live_channels_mapping.py),
   DISPATCHARR_NUFU_LIVE_CHANNELS_ORDERED_FALLBACK — if true, use sorted-name fill when JSON missing (unstable)
   DISPATCHARR_NUFU_LIVE_CHANNELS_SYNC_CHANNEL_NAME — PATCH channel name to stream title (default 1; Plex/guide).
   DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_NAME_TEMPLATE — default {title}; same placeholders as live games.
   DISPATCHARR_NUFU_LIVE_CHANNELS_MODE — by_channel_number (default) | placeholders.
-    Use by_channel_number when M3U already created channels on each dial (51+): map into those
+    Use by_channel_number when M3U already created channels on each dial (e.g. 1..100): map into those
     rows and avoid duplicate "Nufu Live Channels NN" placeholders. placeholders = old behavior.
 """
 
@@ -87,7 +87,7 @@ def _stream_group_games() -> str:
 
 
 def _max_slots_games() -> int:
-    return max(1, min(100, int(os.environ.get("DISPATCHARR_NUFU_LIVE_MAX_SLOTS", "50"))))
+    return max(1, min(100, int(os.environ.get("DISPATCHARR_NUFU_LIVE_MAX_SLOTS", "51"))))
 
 
 def _sync_tvg_id_games() -> bool:
@@ -132,7 +132,7 @@ def _live_channels_stream_display_name(stream: dict[str, Any], slot: int, *, pre
 
 
 def _channel_start_games() -> int:
-    return int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNEL_START", "1"))
+    return int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNEL_START", "500"))
 
 
 def _live_channels_prefix() -> str:
@@ -148,7 +148,7 @@ def _live_channels_max_slots() -> int:
 
 
 def _live_channels_channel_start() -> int:
-    return int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_START", "51"))
+    return int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_START", "26"))
 
 
 def _live_channels_sync_tvg_id() -> bool:

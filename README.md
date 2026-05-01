@@ -1,6 +1,6 @@
 # DispatchArr Plex automation
 
-Python helpers for [Dispatcharr](https://github.com/Dispatcharr/Dispatcharr): refresh M3U playlists, remap channel→stream IDs after provider churn, reserve channel numbers **1–50** for same-day live games (Nufu), map **Live-Games** streams into those slots (including optional **channel display names** for Plex), map **Live-Channels** via a JSON mapping, and optionally prune unused slots or sync **`tvg_id`** for EPG/XMLTV matching.
+Python helpers for [Dispatcharr](https://github.com/Dispatcharr/Dispatcharr): refresh M3U playlists, remap channel→stream IDs after provider churn, reserve a high dial block (default **500–550**) for same-day **Live-Games** (Nufu), map **Live-Channels** from dial **26** (dials **1–25** free for manual channels), optional **channel display names** for Plex, prune, and sync **`tvg_id`** for EPG/XMLTV matching.
 
 Official API docs: [Dispatcharr API overview](https://mintlify.wiki/Dispatcharr/Dispatcharr/api/overview).
 
@@ -47,17 +47,17 @@ Use this when cloning the repo onto a new machine or standing up Dispatcharr fro
 
 3. **Nufu env (minimum)**
    - Set `DISPATCHARR_NUFU_M3U_ACCOUNT_ID` to the account from step 1.
-   - Defaults assume live games use dial **1–50** (`DISPATCHARR_NUFU_LIVE_CHANNEL_START=1`, `DISPATCHARR_NUFU_LIVE_MAX_SLOTS=50`) and placeholders named like **Nufu Live Games 01** (`DISPATCHARR_NUFU_LIVE_PREFIX`). Change only if your layout differs.
+   - Defaults: live games **500–550**; **Live-Channels** slot 1 at dial **26** (`DISPATCHARR_NUFU_LIVE_CHANNELS_CHANNEL_START=26`); dials **1–25** unused by scripts for manual adds. After `reserve_nufu_live_block.py`, other automated channels start at **26** (`DISPATCHARR_NUFU_MAIN_LIBRARY_START`). Override in `.env` if needed.
 
 4. **One-time channel layout (if needed)**
-   - If numbers **1–50** are not already reserved for the live-game block, run `reserve_nufu_live_block.py` (see script `--help`) **once** to create placeholders and shift other channels to **51+**.
-   - Or use `nufu_live_slot_maintenance.py ensure` to create missing **Nufu Live Games NN** rows if placeholders should already exist.
+   - If the **500–550** game block is not set up yet, run `reserve_nufu_live_block.py` **once** to create **Nufu Live Games 01..NN** on those dials and renumber other channels from **26** upward (leaving **1–25** free unless you change env).
+   - Or use `nufu_live_slot_maintenance.py ensure` to create any missing **Nufu Live Games** placeholders.
 
 5. **Live-Channels mapping (optional but recommended for stable Plex order)**
    - Generate a local mapping file (not committed to git; machine-specific):
      - `py -3 map_nufu_live_channels.py --write-initial-mapping`
    - Edit `nufu_live_channels_mapping.json` if you need to fix slot→`tvg_id` / name matching after playlist changes.
-   - Set `DISPATCHARR_NUFU_LIVE_CHANNELS_MODE=by_channel_number` if your M3U already created channels on dials **51+** (typical).
+   - Set `DISPATCHARR_NUFU_LIVE_CHANNELS_MODE=by_channel_number` if your M3U already created channels on dials **26+** (typical).
 
 6. **Guide / Plex labels for live games (optional)**
    - With defaults, mapping live games also PATCHes each slot’s **channel name** to the stream title so clients like Plex can show the game in the guide (`DISPATCHARR_NUFU_LIVE_SYNC_CHANNEL_NAME`, `DISPATCHARR_NUFU_LIVE_CHANNEL_NAME_TEMPLATE` in `.env.example`).
@@ -76,11 +76,11 @@ Use this when cloning the repo onto a new machine or standing up Dispatcharr fro
 |--------|---------|
 | `dispatcharr_client.py` | Thin REST client (auth, channels, streams, M3U refresh, PATCH channels). |
 | `sync_streams_after_m3u.py` | Refresh M3U(s), wait, remap every channel’s stream list to fresh rows (`tvg_id` / name match). Optional `--map-nufu-live-games`, prune flags. |
-| `map_nufu_live_games.py` | Assign Nufu **Live-Games** group streams to **Nufu Live Games 01–50**; clears extra slots; syncs **`tvg_id`** and (by default) **channel display name** for guide/Plex unless disabled. |
+| `map_nufu_live_games.py` | Assign Nufu **Live-Games** streams to **Nufu Live Games 01..N** on the configured dial block; syncs **`tvg_id`** and (by default) **channel display name** unless disabled. |
 | `map_nufu_live_channels.py` | Helpers for **Live-Channels** mapping JSON (`--write-initial-mapping`). |
 | `nufu_live_channels_mapping.py` | Loads slot mapping and resolves streams by `tvg_id`/name (used by `sync_streams_after_m3u.py`). |
-| `reserve_nufu_live_block.py` | One-time: create placeholders **1–50**, shift existing channels to **51+** (preserving previous order). |
-| `nufu_live_slot_maintenance.py` | `prune` — delete inactive live placeholders; `ensure` — recreate missing **01–50** channels. |
+| `reserve_nufu_live_block.py` | One-time: create live-game placeholders on the **high dial block** (default 500–550), renumber other channels from **1** (see `.env`). |
+| `nufu_live_slot_maintenance.py` | `prune` / `ensure` / `fix-game-groups` — maintenance for the live-game placeholder block. |
 | `daily_refresh.py` | Older workflow: M3U refresh + optional YAML remap rules. |
 | `run_dispatcharr_daily.bat` | Windows **Task Scheduler** entry: full sync + Nufu map + logging under `logs\`. |
 

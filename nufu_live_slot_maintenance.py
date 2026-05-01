@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Maintain Nufu live placeholder channels (names like "Nufu Live Games 01" .. "50").
+Maintain Nufu live placeholder channels (names like "Nufu Live Games 01" .. "NN").
 
-prune  — DELETE any 1–50 live slot whose streams are empty or only *stale* rows,
+prune  — DELETE any live-game slot whose streams are empty or only *stale* rows,
          so finished / non-existent games disappear from Dispatcharr entirely.
 
-ensure — Recreate any missing "Nufu Live Games NN" channels for numbers 1–50
+ensure — Recreate any missing "Nufu Live Games NN" channels (slot index 1..MAX_SLOTS)
          (after prune, or partial deletes). channel_group_id comes from a **Live-Games**
          stream row (DISPATCHARR_NUFU_LIVE_STREAM_GROUP).
 
@@ -16,7 +16,7 @@ Typical schedule:
   - After games / before export:  py -3 nufu_live_slot_maintenance.py prune --apply
   - Before next fill:            py -3 nufu_live_slot_maintenance.py ensure --apply
 
-If *every* slot is inactive (nothing scheduled), pruning would remove all 50;
+If *every* slot is inactive (nothing scheduled), pruning would remove all slots;
 pass --allow-all-inactive to confirm that intentional.
 
 Env: DISPATCHARR_NUFU_M3U_ACCOUNT_ID, DISPATCHARR_NUFU_LIVE_PREFIX (same as reserve script).
@@ -79,7 +79,7 @@ def _load_streams_by_id(client: DispatcharrClient, *, hide_stale: bool) -> dict[
 
 
 def _max_slots_default() -> int:
-    return max(1, min(100, int(os.environ.get("DISPATCHARR_NUFU_LIVE_MAX_SLOTS", "50"))))
+    return max(1, min(100, int(os.environ.get("DISPATCHARR_NUFU_LIVE_MAX_SLOTS", "51"))))
 
 
 def _placeholder_slots(
@@ -121,7 +121,7 @@ def cmd_prune(client: DispatcharrClient, *, apply: bool, allow_all_inactive: boo
     channels = _list_channels(client)
     slots = _placeholder_slots(channels, prefix, max_slot=_max_slots_default())
     if not slots:
-        LOG.info("No channels match %r 01..50; nothing to prune.", prefix)
+        LOG.info("No channels match %r live-game placeholders; nothing to prune.", prefix)
         return 0
 
     # Prefer index that still includes stale rows so we can detect "only stale" assignments.
@@ -223,7 +223,7 @@ def ensure_placeholder_slots(
 def cmd_ensure(client: DispatcharrClient, *, apply: bool) -> int:
     prefix = _prefix()
     max_slots = _max_slots_default()
-    channel_start = int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNEL_START", "1"))
+    channel_start = int(os.environ.get("DISPATCHARR_NUFU_LIVE_CHANNEL_START", "500"))
     return ensure_placeholder_slots(
         client,
         prefix=prefix,
@@ -303,7 +303,7 @@ def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     load_dispatcharr_dotenv()
 
-    ap = argparse.ArgumentParser(description="Nufu live slot 1-50 maintenance")
+    ap = argparse.ArgumentParser(description="Nufu live game placeholder maintenance")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p_prune = sub.add_parser("prune", help="Delete inactive live placeholders (no non-stale stream)")
@@ -314,7 +314,7 @@ def main(argv: list[str]) -> int:
         help="Allow deleting every placeholder when none have an active stream",
     )
 
-    p_ensure = sub.add_parser("ensure", help="Create missing Nufu Live Games 01..50 channels")
+    p_ensure = sub.add_parser("ensure", help="Create missing Nufu Live Games 01..NN channels")
     p_ensure.add_argument("--apply", action="store_true", help="Perform POST creates")
 
     p_fix_grp = sub.add_parser(

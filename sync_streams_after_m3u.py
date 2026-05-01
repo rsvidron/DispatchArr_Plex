@@ -18,7 +18,7 @@ Env:
   before rebuilding the stream index (worker may still be importing).
 
 Optional Nufu live (same placeholder names as reserve_nufu_live_block.py):
-  --map-nufu-live-games — assign Nufu "Live-Games" streams to Nufu Live Games 01..N on dials 1–50 only.
+  --map-nufu-live-games — assign Nufu "Live-Games" streams to Nufu Live Games 01..N (dial block from env, default 500–550).
     Those placeholders are excluded from the generic remap above so only this step sets them (daily churn).
   --map-nufu-live-channels — assign Live-Channels using nufu_live_channels_mapping.json (stable Plex order)
   --map-nufu-no-ensure — skip creating missing game placeholders before mapping
@@ -28,7 +28,7 @@ Optional Nufu live (same placeholder names as reserve_nufu_live_block.py):
   --map-nufu-live-channels-no-sync-tvg-id — do not PATCH tvg_id for live channels
   --map-nufu-live-channels-no-sync-channel-name — do not PATCH live-channel display name to stream title
   --prune-unused-nufu-live-slots — remove placeholder channels with no active stream
-  --prune-nufu-allow-all-inactive — required when every 1-50 slot would be removed
+  --prune-nufu-allow-all-inactive — required when every live-game slot would be removed
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ def _is_nufu_live_game_placeholder_name(name: Any, *, prefix: str, max_slot: int
 def strip_nufu_live_game_plans_from_generic_remap(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Reserve generic remap for library channels; Live Games 01..N are handled only by map_nufu_live_games."""
     prefix = os.environ.get("DISPATCHARR_NUFU_LIVE_PREFIX", "Nufu Live Games").strip()
-    max_slot = max(1, min(100, int(os.environ.get("DISPATCHARR_NUFU_LIVE_MAX_SLOTS", "50"))))
+    max_slot = max(1, min(100, int(os.environ.get("DISPATCHARR_NUFU_LIVE_MAX_SLOTS", "51"))))
     out: list[dict[str, Any]] = []
     skipped = 0
     for p in plans:
@@ -363,12 +363,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--prune-unused-nufu-live-slots",
         action="store_true",
-        help="After remap, delete Nufu Live Games 01-50 channels with no non-stale streams",
+        help="After remap, delete Nufu Live Games placeholders with no non-stale streams (env slot count)",
     )
     ap.add_argument(
         "--prune-nufu-allow-all-inactive",
         action="store_true",
-        help="With --prune-unused-nufu-live-slots, allow deleting all 50 when none have a live stream",
+        help="With --prune-unused-nufu-live-slots, allow deleting entire game block when none have a live stream",
     )
     args = ap.parse_args(argv)
 
